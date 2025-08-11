@@ -54,6 +54,11 @@ public class ValueManager : MonoBehaviour
             FuelPour.rectTransform.sizeDelta = Vector2.Lerp(FuelPour.rectTransform.sizeDelta,new Vector2(Mathf.Min(PourDelta*1.5f, 32), FuelPour.rectTransform.sizeDelta.y), Time.deltaTime*8);
         }
         PourDelta = Mathf.Lerp(PourDelta, 0, Time.deltaTime*3);
+        if(HP <= 0 && !PlayerScript.Instance.IsDead){
+            PlayerScript.Instance.IsDead = true;
+            LevelTransition.Instance.Die();
+            AudioManager.Instance.PlaySound("death");
+        }
     }
     void SetImageForPiston(int pistonID){
         if(HPPerPistonbar * pistonID >= HP){
@@ -86,5 +91,8 @@ public class ValueManager : MonoBehaviour
     public static void AddScore(int val){
         Instance.Score+=val;
         Instance.ScoreText.text = $"{Instance.Score}";
+    }
+    public static void AddHp(float val){
+        Instance.HP=Mathf.Min(Instance.HP+val,100);
     }
 }

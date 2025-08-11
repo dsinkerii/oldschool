@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Unity.AI.Navigation;
 using UnityEngine;
 using UnityEngine.ProBuilder;
 using UnityEngine.ProBuilder.MeshOperations;
@@ -11,28 +12,36 @@ public class MeshGen : MonoBehaviour
     public int Space = 2;
     public float wallThickness = 2;
     void Start() => Instance = this;
-    public float vertexMergeDistance = 0.001f;
-    private static List<Room> corridors = new();
+    private static readonly List<Room> corridors = new();
     private static readonly List<ProBuilderMesh> meshes = new();
+    public static readonly Dictionary<Room, Bounds> allRooms = new();
     private static bool[,] floorMap;
-
+    public static GameObject CombinedMesh;
     public static void GenerateMesh(Corridor rootRoom, Vector2Int size, float wallHeight){
         corridors.Clear();
         meshes.Clear();
+        allRooms.Clear();
         CreateCorridors(rootRoom);
         CreateFloor(rootRoom);
         CreateWalls(rootRoom, size, wallHeight);
         PostProcessMeshes();
-
+        CleanUpRooms();
     }
-
+    static void CleanUpRooms(){ //remove rooms out of bounds
+        var recopyRooms = new Dictionary<Room, Bounds>(allRooms);
+        foreach(var room in recopyRooms){
+            if(!FoolproofBounds.Intersects(new(room.Value.center,Vector3.one))){
+                allRooms.Remove(room.Key);
+            }
+        }
+    }
     //for roomgenerator
     public static Texture2D CreateMap(){
         Vector2Int size = new(floorMap.GetLength(0),floorMap.GetLength(1));
-        Texture2D newTex = new(size.x, size.y){filterMode=FilterMode.Point};
-        for(int x = 0; x < size.x; x++){
-            for(int y = 0; y < size.y; y++){
-                newTex.SetPixel(x,y,floorMap[x,y] ? Color.white : Color.black);
+        Texture2D newTex = new(size.x/2, size.y/2){filterMode=FilterMode.Point};
+        for(int x = 0; x < size.x/2; x++){
+            for(int y = 0; y < size.y/2; y++){
+                newTex.SetPixel(x,y,floorMap[Mathf.Min(x*2, size.x), Mathf.Min(y*2, size.y)] ? Color.white : Color.black);
             }
         }
         newTex.Apply();
@@ -61,6 +70,10 @@ public class MeshGen : MonoBehaviour
     static void PostProcessMeshes(){
         CombineObjects();
     }
+    public static void PrepareForAI(){
+        var nmSurface = CombinedMesh.AddComponent<NavMeshSurface>();
+        nmSurface.BuildNavMesh(); // oh it was that simple. 
+    }
 
     //////////////////////
     /// help functions /// : GenerateMeshes
@@ -68,8 +81,8 @@ public class MeshGen : MonoBehaviour
     
     static bool Dice() => Random.value > 0.5f;
     static Room GetRandomRoom(Corridor node) => node.IsLeaf ? node.room : GetRandomRoom(Dice() ? node.left : node.right);
-    static void CreateHorizontalCorridor(int x1, int x2, int y) => corridors.Add(new Room { Pos = new Vector2Int(Mathf.Min(x1, x2), y), Size = new Vector2Int(Mathf.Abs(x2 - x1) + Instance.Space, Instance.Space) });
-    static void CreateVerticalCorridor(int y1, int y2, int x) => corridors.Add(new Room { Pos = new Vector2Int(x, Mathf.Min(y1, y2)), Size = new Vector2Int(Instance.Space, Mathf.Abs(y2 - y1) + Instance.Space) });
+    static void CreateHorizontalCorridor(int x1, int x2, int y) => corridors.Add(new Room { Pos = new Vector2Int(Mathf.Min(x1, x2), y), IsTunnel = true, Size = new Vector2Int(Mathf.Abs(x2 - x1) + Instance.Space, Instance.Space) });
+    static void CreateVerticalCorridor(int y1, int y2, int x) => corridors.Add(new Room { Pos = new Vector2Int(x, Mathf.Min(y1, y2)), IsTunnel = true, Size = new Vector2Int(Instance.Space, Mathf.Abs(y2 - y1) + Instance.Space) });
 
     //////////////////////
     /// help functions /// : CreateFloor
@@ -81,6 +94,7 @@ public class MeshGen : MonoBehaviour
         CreateFloorsForRooms(rootNode, parent);
         foreach(var corridor in corridors) CreateFloorSection(corridor, parent);
     }
+    
 
     static void CreateFloorsForRooms(Corridor node, Transform parent){
         if(node == null) return;
@@ -91,9 +105,16 @@ public class MeshGen : MonoBehaviour
     static void CreateFloorSection(Room room, Transform parent){
         var floor = ShapeGenerator.CreateShape(ShapeType.Cube).gameObject;
         floor.transform.parent = parent;
-        floor.transform.position = new Vector3(room.Pos.x + room.Size.x/2f, 0, room.Pos.y + room.Size.y/2f);
-        floor.transform.localScale = new Vector3(room.Size.x, 0.1f, room.Size.y);
+        
+        Vector3 worldPos = new(room.Pos.x + room.Size.x/2f, 0, room.Pos.y + room.Size.y/2f);
+        floor.transform.position = worldPos;
+        floor.transform.localScale = new(room.Size.x, 0.1f, room.Size.y);
         floor.GetComponent<MeshRenderer>().material = Instance.floorMat;
+        
+        Vector3 boundsCenter = new(worldPos.x, 1f, worldPos.z);
+        Vector3 boundsSize = new(room.Size.x - 2f, 2f, room.Size.y - 2f);
+        
+        allRooms.Add(room, new Bounds(boundsCenter, boundsSize));
         meshes.Add(floor.GetComponent<ProBuilderMesh>());
     }
 
@@ -102,7 +123,7 @@ public class MeshGen : MonoBehaviour
     //////////////////////
     
     static void CreateWalls(Corridor rootRoom, Vector2Int size, float wallHeight){
-        var wallParent = new GameObject("Walls").transform;
+        var wallParent = new GameObject("walls").transform; // nescessary
         wallParent.parent = RoomGenerator.Instance.BaseMesh.transform;
         
         floorMap = new bool[size.x, size.y];
@@ -118,6 +139,8 @@ public class MeshGen : MonoBehaviour
 
         var wallSegments = FindWallSegments(wallMap, size);
         foreach(var segment in wallSegments) CreateWallSegment(segment, wallParent, wallHeight);
+
+        CreateFoolproofBoundaryWalls(wallParent, wallHeight);
     }
     
     static List<WallSegment> FindWallSegments(bool[,] wallMap, Vector2Int size){
@@ -208,12 +231,11 @@ public class MeshGen : MonoBehaviour
     //////////////////////
     /// help functions /// : PostProcessMeshes
     //////////////////////
-    
     static void CombineObjects(){
         var combinedMeshes = CombineMeshes.Combine(meshes);
         if (combinedMeshes != null && combinedMeshes.Count > 0){
             var combined = combinedMeshes[0];
-            combined.transform.SetPositionAndRotation(RoomGenerator.Instance.BaseMesh.transform.position, RoomGenerator.Instance.BaseMesh.transform.rotation);
+            //combined.transform.SetPositionAndRotation(RoomGenerator.Instance.BaseMesh.transform.position, RoomGenerator.Instance.BaseMesh.transform.rotation);
             combined.transform.localScale = RoomGenerator.Instance.BaseMesh.transform.localScale;
             
             var oldBaseMesh = RoomGenerator.Instance.BaseMesh;
@@ -228,6 +250,47 @@ public class MeshGen : MonoBehaviour
             combined.transform.parent = RoomGenerator.Instance.transform;
             var collider = combined.gameObject.AddComponent<MeshCollider>();
             collider.sharedMesh = combined.GetComponent<MeshFilter>().mesh;
+            CombinedMesh = combined.gameObject;
         }
+    }
+    static Bounds FoolproofBounds;
+    static void CreateFoolproofBoundaryWalls(Transform wallParent, float wallHeight) {
+        float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
+        bool hasWalls = false;
+        
+        foreach (Transform child in RoomGenerator.Instance.BaseMesh.transform) {
+            if (child.name == "walls") {
+                foreach (Transform wall in child) {
+                    var pos = wall.position;
+                    var scale = wall.localScale;
+                    minX = Mathf.Min(minX, pos.x - scale.x/2);
+                    maxX = Mathf.Max(maxX, pos.x + scale.x/2);
+                    minZ = Mathf.Min(minZ, pos.z - scale.z/2);
+                    maxZ = Mathf.Max(maxZ, pos.z + scale.z/2);
+                    hasWalls = true;
+                }
+                break; // we dont need to continue checking
+            }
+        }
+        if (!hasWalls) return;
+        
+        var t = Instance.wallThickness;
+        var h = wallHeight * 0.5f;
+        var padding = -t; // negative padding to fill up holes
+        
+        CreateWall(wallParent, new Vector3((minX + maxX)/2, h, maxZ + padding), new Vector3(maxX - minX + padding*2, wallHeight, t));
+        CreateWall(wallParent, new Vector3((minX + maxX)/2, h, minZ - padding), new Vector3(maxX - minX + padding*2, wallHeight, t));
+        CreateWall(wallParent, new Vector3(maxX + padding, h, (minZ + maxZ)/2), new Vector3(t, wallHeight, maxZ - minZ + padding*2));
+        CreateWall(wallParent, new Vector3(minX - padding, h, (minZ + maxZ)/2), new Vector3(t, wallHeight, maxZ - minZ + padding*2));
+        FoolproofBounds = new(new((minX + maxX)/2, h,(minZ + maxZ)/2), new Vector3(maxX - minX + padding*2, wallHeight, maxZ - minZ + padding*2));
+    }
+
+    static void CreateWall(Transform parent, Vector3 pos, Vector3 scale) {
+        var w = ShapeGenerator.CreateShape(ShapeType.Cube).gameObject;
+        w.transform.parent = parent;
+        w.transform.position = pos;
+        w.transform.localScale = scale;
+        w.GetComponent<MeshRenderer>().material = Instance.wallMat;
+        meshes.Add(w.GetComponent<ProBuilderMesh>());
     }
 }

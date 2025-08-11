@@ -74,7 +74,9 @@ public class SpiderIK : MonoBehaviour
     [SerializeField] float groundHeight = 3;
     [SerializeField] float accelerationSpeed = 20;
     [SerializeField] Rigidbody rb;
-    void Start()
+    [SerializeField] LayerMask RayLayers;
+    [SerializeField] float speedmult = 3;
+    void Awake()
     {
         // init setup
         UpdateLegPos = new (){false,false,false,false}; // in case it broke
@@ -85,7 +87,7 @@ public class SpiderIK : MonoBehaviour
         int i = 0;
         foreach(var parent in raycaster.RaycastArray){
             RaycastHit hit;
-            if (Physics.Raycast(parent.position, parent.TransformDirection(Vector3.down), out hit, 10)){
+            if (Physics.Raycast(parent.position, parent.TransformDirection(Vector3.down), out hit, 10, RayLayers)){
                 // hit
                 RaycastPositions[i] = hit.point;
                 legTargets.LegArray[i].position = hit.point;
@@ -98,9 +100,9 @@ public class SpiderIK : MonoBehaviour
     float acceleration;
     void Update(){
         // grounded
-        Grounded = Physics.Raycast(rb.position, rb.transform.TransformDirection(Vector3.down), out hit, groundHeight);
-        acceleration = Grounded && StickToGround ? 0 : Mathf.Min(acceleration += Time.deltaTime*accelerationSpeed, 10);
-        if(!StickToGround){
+        Grounded = Physics.Raycast(rb.position, rb.transform.TransformDirection(Vector3.down), out hit, groundHeight, RayLayers);
+        acceleration = Grounded && (PlayerScript.Instance.IsDead || StickToGround) ? 0 : Mathf.Min(acceleration += Time.deltaTime*accelerationSpeed, 10);
+        if(PlayerScript.Instance.IsDead || !StickToGround){
             rb.AddForce(new Vector3(0,-45.6f*acceleration,0));
         }
         
@@ -109,18 +111,32 @@ public class SpiderIK : MonoBehaviour
         // shoot rays downward
         int i = 0;
         foreach(var parent in raycaster.RaycastArray){
-            if (Physics.Raycast(parent.position, parent.TransformDirection(Vector3.down), out hit, 10)){
+            if (Physics.Raycast(parent.position, parent.TransformDirection(Vector3.down), out hit, 10, RayLayers)){
                 // hit
                 RaycastPositions[i] = hit.point;
                 RaycastRotations[i] = hit.normal;
             }
             i++;
         }
-
+    }
+    void FixedUpdate(){
         // now targets
         SetLegTargets();
         // set body pos (https://github.com/Sopiro/Unity-Procedural-Animation/blob/master/Assets/Scripts/LegController.cs)
         RotateBody();
+    }
+    public void ResetLegTargets(){
+        int i = 0;
+        foreach(var parent in raycaster.RaycastArray){
+            if (Physics.Raycast(parent.position, parent.TransformDirection(Vector3.down), out RaycastHit hit, 10, RayLayers)){
+                // hit
+                RaycastPositions[i] = hit.point;
+                legTargets.LegArray[i].position = hit.point;
+                RaycastRotations[i] = hit.normal;
+                legTargets.LocalStartPosition[i] = hit.point;
+            }
+            i++;
+        }
     }
     void SetLegTargets(){
         int i=0;
@@ -128,9 +144,8 @@ public class SpiderIK : MonoBehaviour
             if(Vector3.Distance(target.position, RaycastPositions[i]) > MoveDistance && !UpdateLegPos[i]){ // only move if we're not moving already
                 if(legTargets.LocalStartPosition.Count != 4) legTargets.LocalStartPosition = new List<Vector3>(4); // no out of range errors
                 legTargets.LocalStartPosition[i] = target.position;
-
                 // we dont move our foot to the center of our body when we walk, we move it ahead, so we dont switch legs too fast, so we move it for convenience
-                raycastLookAhead[i] = (RaycastPositions[i]-target.position).normalized*MoveAhead+RaycastPositions[i]; // get direction of where to go, multiply by ahead value, and add to center of where to go
+                raycastLookAhead[i] = (RaycastPositions[i]-target.position).normalized*(MoveAhead)+RaycastPositions[i]; // get direction of where to go, multiply by ahead value, and add to center of where to go
                 hiddenLerpPos[i] = legTargets.LocalStartPosition[i];
 
                 ///
@@ -151,21 +166,22 @@ public class SpiderIK : MonoBehaviour
                     _ => true // ermm, 5th leg??? what the flip, set to true anyway then
                 };
             }
-            if(UpdateLegPos[i] && StickToGround){
+            if(UpdateLegPos[i] && (PlayerScript.Instance.IsDead || StickToGround)){
                 float Ylerp = Vector3.Distance(hiddenLerpPos[i], raycastLookAhead[i]) / (Vector3.Distance(raycastLookAhead[i], legTargets.LocalStartPosition[i])+0.001f);
-                hiddenLerpPos[i] = Vector3.MoveTowards(hiddenLerpPos[i], raycastLookAhead[i], moveSpeedlocal);
+                hiddenLerpPos[i] = Vector3.MoveTowards(hiddenLerpPos[i], raycastLookAhead[i], moveSpeedlocal * speedmult);
                 var pos = hiddenLerpPos[i] + spiderBody.TransformDirection(new Vector3(0,0,Mathf.Abs(Mathf.Sin(Ylerp*Mathf.PI))*StepHeight*-1));
                 legTargets.CopyTargetPos(i, pos, RaycastRotations[i]);
                 if(Vector3.Distance(hiddenLerpPos[i], raycastLookAhead[i]) < 0.00005f){
                     UpdateLegPos[i] = false; // we're done here
+                    AudioManager.Instance.PlaySound("walk");
                 }
-            }else if (!StickToGround){
+            }else if (!(PlayerScript.Instance.IsDead || StickToGround)){
                 legTargets.CopyTargetPos(i, new Vector3(RaycastPositions[i].x,Mathf.Max(spiderBody.position.y-2,RaycastPositions[i].y),RaycastPositions[i].z), RaycastRotations[i]);
             }
             i++;
         }
     }
-    void RotateBody(){
+    void RotateBody(){ // that was copied
         Vector3 tipCenter = Vector3.zero;
         bodyUp = Vector3.zero;
 
@@ -176,7 +192,7 @@ public class SpiderIK : MonoBehaviour
             bodyUp += RaycastRotations[j];
         }
 
-        if (Physics.Raycast(spiderBody.position, spiderBody.up * -1, out hit, 10.0f))
+        if (Physics.Raycast(spiderBody.position, spiderBody.up * -1, out hit, 10.0f, RayLayers))
         {
             bodyUp += hit.normal;
         }
@@ -185,7 +201,7 @@ public class SpiderIK : MonoBehaviour
         bodyUp.Normalize();
 
         // Interpolate postition from old to new
-        if(StickToGround){
+        if(StickToGround && !PlayerScript.Instance.IsDead){
             bodyPos = tipCenter + bodyUp * SpiderHeight;
             spiderBody.position = Vector3.Lerp(spiderBody.position, bodyPos, PosAdjustRatio);
         }
@@ -195,7 +211,7 @@ public class SpiderIK : MonoBehaviour
         bodyForward = Vector3.Cross(bodyRight, bodyUp);
 
         // Interpolate rotation from old to new
-        if(StickToGround)
+        if(StickToGround && !PlayerScript.Instance.IsDead)
             bodyRotation = Quaternion.LookRotation(bodyForward, bodyUp);
         else
             bodyRotation = Quaternion.LookRotation(bodyForward, Vector3.up);
@@ -206,7 +222,7 @@ public class SpiderIK : MonoBehaviour
         Gizmos.color = Color.yellow;
         foreach(var parent in raycaster.RaycastArray){
             RaycastHit hit;
-            if (Physics.Raycast(parent.position, parent.TransformDirection(Vector3.down), out hit, 10)){
+            if (Physics.Raycast(parent.position, parent.TransformDirection(Vector3.down), out hit, 10, RayLayers)){
                 Gizmos.DrawLine(parent.position, hit.point); 
             }
         }

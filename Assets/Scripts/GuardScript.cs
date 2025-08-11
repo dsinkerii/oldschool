@@ -1,10 +1,11 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.AI;
 public class GuardScript : MonoBehaviour
 {
     public NavMeshAgent NavMesh;
-    public GameObject Goto;
+    public Bounds Goto;
     [SerializeField] NavMeshPath path;
     [SerializeField] bool IsActive;
     [SerializeField] float RotateRate; // deg in sec
@@ -22,7 +23,13 @@ public class GuardScript : MonoBehaviour
     [SerializeField] LayerMask ShootLayers;
     [SerializeField] int Shootrate = 3;
     [SerializeField] float fuelAdd = 12;
+    [SerializeField] float hpAdd = 35;
     [SerializeField] int scoreAdd = 100;
+    [SerializeField] float FinishTimeWait = 4;
+    public static float DamagePlayerMult = 1;
+    public bool FinishedWalking;
+    float finishTimedelta = 0;
+    public AudioSource robotShoot;
     void Start(){
         path ??= new();
         MoveIdx = 0;
@@ -44,21 +51,21 @@ public class GuardScript : MonoBehaviour
             IsDead = true;
             NavMesh.enabled = false; // become static
             Explosion.Play();
+            AudioManager.Instance.PlaySound("explosion");
             shake.Amount = 0;
             sparks.Stop();
             ViewField.SetActive(false);
             ValueManager.AddFuel(fuelAdd);
             ValueManager.AddScore(scoreAdd);
+            ValueManager.AddHp(hpAdd);
             CachedGuards.Remove(gameObject.name); // remove ourselfs from the dict since we dont need it atp
         }
     }
     
     [ContextMenu("setpath")]
     public void SetPath(){
-        if(NavMesh.CalculatePath(Goto.transform.position, path)){
-            print("madepath");
+        if(NavMesh.CalculatePath(Goto.center, path)){
             MoveIdx = 0;
-            print($"corners:{path.corners.Length}");
         }
     }
     float PlayerPosUpdateTime = 0;
@@ -71,6 +78,16 @@ public class GuardScript : MonoBehaviour
         CachedGuards.Add(gameObject.name, this); // cache yourself...
     }
     void FixedUpdate(){
+        if(path == null || path.corners.Count() == 0 || FinishedWalking){
+            if(finishTimedelta > FinishTimeWait){
+                Goto = GameManager.Instance.GetRoomToGoAt();
+                FinishedWalking = false;
+                finishTimedelta = 0;
+                SetPath();
+            }else{
+                finishTimedelta+=1/20f;
+            }
+        }
         ShootTrail.transform.position = shootPoint.position;  
         if(AggressiveToPlayer && !IsDead && shootTick >= Shootrate){
             shootTick = 0;
@@ -86,10 +103,11 @@ public class GuardScript : MonoBehaviour
             Vector3 random = Random.insideUnitSphere.normalized / 30;
             if(Physics.Raycast(shootPoint.position, (shootPoint.forward+random).normalized, out RaycastHit hit2, 50, ShootLayers)){
                 ShootTrail.transform.position = hit2.point;
+                robotShoot.Play();
                 if(hit2.collider.gameObject.layer == 9 && CachedGuards.ContainsKey(hit2.collider.transform.parent.name)){ // other guard
                     CachedGuards[hit2.collider.transform.parent.name].AggressiveToPlayer = true;
                 }else if(hit2.collider.gameObject.layer == 6){ // player
-                    PlayerScript.Instance.Damage(DamageRate);
+                    PlayerScript.Instance.Damage(DamageRate*DamagePlayerMult);
                 }
             }
         }else{
@@ -100,6 +118,44 @@ public class GuardScript : MonoBehaviour
         if(AggressiveToPlayer && !IsDead)
             shootTick++;
         Move();
+        CheckCrowding();
+    }
+    [SerializeField] List<Transform> nearbyGuards = new();
+    [SerializeField] float avoidanceForce = 2f;
+
+    [SerializeField] float crowdCheckTime = 0f;
+    [SerializeField] float crowdTimeout = 3f;
+    void CheckCrowding(){
+        if(nearbyGuards.Count >= 1){
+            crowdCheckTime += 1/20f;
+            
+            if(crowdCheckTime >= crowdTimeout) {
+                Goto = GameManager.Instance.GetRoomToGoAt();
+                FinishedWalking = false;
+                finishTimedelta = 0;
+                SetPath();
+                crowdCheckTime = 0; 
+            }
+        }
+        else{
+            crowdCheckTime = 0;
+        }
+    }
+    Vector3 GetAvoidanceOffset(){
+        Vector3 avoidance = Vector3.zero;
+        
+        foreach(Transform guard in nearbyGuards){
+            if(guard == null) continue;
+            
+            Vector3 diff = transform.position - guard.position;
+            float distance = diff.magnitude;
+            
+            if(distance > 0){
+                avoidance += diff.normalized * (avoidanceForce / distance);
+            }
+        }
+        
+        return avoidance;
     }
     [SerializeField] int MoveIdx = 0;
     [SerializeField] bool IsOnPoint;
@@ -109,7 +165,7 @@ public class GuardScript : MonoBehaviour
         if(!IsActive) return; // gettaouttahere
         if(path.corners.Length == 0) return; // no path yet
         if(MoveIdx >= path.corners.Length) {MoveIdx--; return;} // out of bounds
-        if(IsOnPoint && MoveIdx == path.corners.Length-1) return; // we've finished walking
+        if(IsOnPoint && MoveIdx == path.corners.Length-1){FinishedWalking = true; return;} // we've finished walking
 
         //we're good to continue
         if(MoveIdx == 0){
@@ -131,13 +187,11 @@ public class GuardScript : MonoBehaviour
                 IsOnPoint = false; // done, next point
             }
         }else{
-            if(Vector3.Distance(path.corners[MoveIdx-1],NavMesh.transform.position) <= Vector3.Distance(path.corners[MoveIdx],path.corners[MoveIdx-1])-.01){
-                print($"{NavMesh.transform.position} {PlayerScript.Instance.playerObject.transform.position}");
+            if(Vector3.Distance(path.corners[MoveIdx-1],NavMesh.transform.position) <= Vector3.Distance(path.corners[MoveIdx],path.corners[MoveIdx-1])-.01){ 
                 if(!(Vector3.Distance(NavMesh.transform.position, PlayerScript.Instance.playerObject.transform.position) < 10 && AggressiveToPlayer)){
-                    NavMesh.transform.position = Vector3.MoveTowards(NavMesh.transform.position, path.corners[MoveIdx], walkSpeed * (AggressiveToPlayer ? 4 : 1)/20);
-                    print("moving");
+                    Vector3 targetPos = path.corners[MoveIdx] + GetAvoidanceOffset();
+                    NavMesh.transform.position = Vector3.MoveTowards(NavMesh.transform.position, targetPos, walkSpeed * (AggressiveToPlayer ? 4 : 1)/20);
                 }else{
-                    print("cant move!!");
                 }
             }else{
                 NavMesh.transform.position = path.corners[MoveIdx];
@@ -145,9 +199,29 @@ public class GuardScript : MonoBehaviour
             }
         }
     }
-    void OnTriggerEnter(Collider other)
-    {
-        if(other.gameObject.layer == 6) {AggressiveToPlayer = true;}
+    void OnTriggerEnter(Collider other){
+        if(other.gameObject.layer == 6)  {
+            AggressiveToPlayer = true;
+        }
+        else if(other.gameObject.layer == 9){ // other guard
+            nearbyGuards.Add(other.transform.parent);
+        }
+    }
+
+    void OnTriggerStay(Collider other){
+        if(other.gameObject.layer == 6) {
+            AggressiveToPlayer = true;
+        }
+    }
+
+    void OnTriggerExit(Collider other) {
+        if(other.gameObject.layer == 9){
+            nearbyGuards.Remove(other.transform.parent);
+        }
+    }
+    void OnDestroy(){
+        if(!IsDead)
+        CachedGuards.Remove(gameObject.name);
     }
     void OnDrawGizmosSelected(){
         if(path == null) return;

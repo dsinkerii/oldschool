@@ -10,7 +10,7 @@ public class ShaderOptimizer : MonoBehaviour
     [SerializeField] PerformanceLevel testLevel = PerformanceLevel.High;
     [SerializeField] int potatoMemoryThreshold = 1000;
     [SerializeField] int mediumMemoryThreshold = 3000;
-    [SerializeField] TextMeshProUGUI debugdata;
+    //[SerializeField] TextMeshProUGUI debugdata;
     [SerializeField] Camera renderCam;
     public enum PerformanceLevel
     {
@@ -23,11 +23,11 @@ public class ShaderOptimizer : MonoBehaviour
     
     void Start(){
         OptimizeShaders();
-        if(Debug.isDebugBuild){
+        /*f(Debug.isDebugBuild){
             debugdata.text = "";
         }else{
             debugdata.transform.parent.gameObject.SetActive(false); // disable
-        }
+        }*/
     }
     
     void Update()
@@ -37,7 +37,7 @@ public class ShaderOptimizer : MonoBehaviour
                 currentLevel = testLevel;
                 OptimizeShaders();
             }
-        }
+        }/*
         if(Debug.isDebugBuild){
             debugdata.text = $"fps: {(int)(1f / Time.unscaledDeltaTime)}\n"+
             $"level: {currentLevel}\n"+
@@ -45,7 +45,7 @@ public class ShaderOptimizer : MonoBehaviour
             $"processor frequency: {SystemInfo.processorFrequency}\n"+
             $"ram: {SystemInfo.systemMemorySize}\n"+
             $"true health: {ValueManager.Instance.HP}";
-        }
+        }*/
     }
     
     void OptimizeShaders()

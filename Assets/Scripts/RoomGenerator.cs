@@ -17,20 +17,21 @@ public class RoomGenerator : MonoBehaviour
     [SerializeField] float wallHeight;
     [SerializeReference] Corridor rootRoom;
     public ProBuilderMesh BaseMesh;
-    [SerializeField] RawImage map;
-
+    public RawImage map;
+    public static float SizeMult = 1;
     void Start() => Instance = this;
 
     void Clear(){
-        while (BaseMesh.transform.childCount > 0)
-            DestroyImmediate(BaseMesh.transform.GetChild(0).gameObject);
+        while (MeshGen.CombinedMesh != null && MeshGen.CombinedMesh.transform.childCount > 0){
+            DestroyImmediate(MeshGen.CombinedMesh.transform.GetChild(0).gameObject);
+        }
     }
 
     [ContextMenu("DO IT")]
     public void BakeMesh(){
         Clear();
-        var size = new Vector2Int(UnityEngine.Random.Range(RoomDimensionsMin.x, RoomDimensionsMax.x), 
-                                  UnityEngine.Random.Range(RoomDimensionsMin.y, RoomDimensionsMax.y));
+        var size = new Vector2Int((int)UnityEngine.Random.Range(RoomDimensionsMin.x*SizeMult, RoomDimensionsMax.x*SizeMult), 
+                                  (int)UnityEngine.Random.Range(RoomDimensionsMin.y*SizeMult, RoomDimensionsMax.y*SizeMult));
         
         rootRoom = new Corridor { Pos = Vector2Int.zero, Size = size };
         Corridor.MaxDepth = depthLimit;

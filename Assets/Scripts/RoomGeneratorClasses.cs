@@ -1,5 +1,5 @@
 
-using System.Drawing;
+using System.Collections.Generic;
 using UnityEngine;
 
 [System.Serializable]
@@ -13,6 +13,10 @@ public class Corridor{
     // pivot point is bottom left
     public Vector2Int Pos, Size;
     public Room room;
+    public static List<Room> AllRooms = new();
+    public static void CleanRefs(){
+        AllRooms = new();
+    }
     public bool IsLeaf => left == null && right == null;
     // hi staticvoid._.
     public static void PartitionCorridors(Corridor node, int depth){
@@ -45,14 +49,30 @@ public class Corridor{
             int roomY = node.Pos.y + Random.Range(1, node.Size.y - roomHeight);
             
             node.room = new Room { Pos = new Vector2Int(roomX, roomY), Size = new Vector2Int(roomWidth, roomHeight) };
+            AllRooms.Add(node.room);
         } else {
             CreateRooms(node.left);
             CreateRooms(node.right);
         }
     }
 }
+[System.Serializable]
 public class Room{ // no longer a child of corridor
     public Vector2Int Pos, Size;
+    public List<string> Flags = new();
+    public bool IsTunnel;
+    public static Room GetBiggestRoom(List<Room> rooms){
+        if(rooms == null || rooms.Count == 0) return null;
+        Vector2Int MaxSize = new();
+        Room roomref = null;
+        foreach(var room in rooms){
+            if(room.Size.x >= MaxSize.x && room.Size.y > MaxSize.y){
+                roomref = room;
+                MaxSize = room.Size;
+            }
+        }
+        return roomref;
+    }
 }
 public class WallSegment{
     public Vector2Int start;

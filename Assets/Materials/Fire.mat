@@ -118,8 +118,9 @@ Material:
     - _WorkflowMode: 1
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
-    - _depth: 13.77
+    - _depth: 4
     - _emission: 374.2
+    - _ishorizontal: 0
     - _scale: 0.14
     - _terst: 0.01
     m_Colors:
