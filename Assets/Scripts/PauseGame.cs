@@ -23,6 +23,7 @@ public class PauseGame : MonoBehaviour
     }
     void Update()
     {
+        if(PlayerScript.Instance.IsDead) return;
         if(pause.IsPressed() && !IsActivelyPressing){
             IsActivelyPressing = true;
             paused = !paused;

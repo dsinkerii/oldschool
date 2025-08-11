@@ -27,6 +27,7 @@ public class PlayerScript : MonoBehaviour
     public float flamethrowerVol;
     [SerializeField] LayerMask ShootLayers;
     bool canJump = true;
+    public AudioSource flamethrowerAudio;
 
     public void Damage(float val){
         ValueManager.Instance.HP=Mathf.Max(ValueManager.Instance.HP-val,0);
@@ -80,10 +81,6 @@ public class PlayerScript : MonoBehaviour
                 fireParticle.Play();
                 dustParticle.Play();
                 flamethrowerVol = 1;
-                if(!AudioManager.Instance.sfx["flamethrower"].isPlaying){
-                    AudioManager.Instance.sfx["flamethrower"].Play();
-                    AudioManager.Instance.sfx["flamethrower"].loop = true;
-                }
             }
             else if(fireParticle.isEmitting){
                 ValueManager.Instance.Fuel-=Time.deltaTime*FlamethrowerRate;
@@ -116,7 +113,7 @@ public class PlayerScript : MonoBehaviour
                 flamethrowerVol = 0;
             }
         }
-        AudioManager.Instance.sfx["flamethrower"].volume = Mathf.Clamp01(Mathf.Lerp(AudioManager.Instance.sfx["flamethrower"].volume, flamethrowerVol, Time.deltaTime)*1.1f-0.05f);
+        flamethrowerAudio.volume = Mathf.Lerp(flamethrowerAudio.volume, flamethrowerVol*0.25f, Time.deltaTime*5f);
     }
     Vector3 ShootPoint;
     void OnDrawGizmos()

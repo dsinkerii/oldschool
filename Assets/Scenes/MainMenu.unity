@@ -7745,7 +7745,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "made with <sprite=0> \nby dsinkerii & kaktus42"
+  m_text: "made with <sprite=0> \nby dsinkerii & kaktus54"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 032a492cf6686bc4ca4bfd993790bcdc, type: 2}
   m_sharedMaterial: {fileID: -1861910406063262057, guid: 032a492cf6686bc4ca4bfd993790bcdc, type: 2}

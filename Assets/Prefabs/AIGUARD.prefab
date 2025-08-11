@@ -19,7 +19,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &7403621356078209192
 Transform:
   m_ObjectHideFlags: 0
@@ -100,7 +100,7 @@ MonoBehaviour:
   scoreAdd: 100
   FinishTimeWait: 4
   FinishedWalking: 0
-  robotShoot: {fileID: 0}
+  robotShoot: {fileID: 4348673246285985441}
   ShootPoint: {x: 0, y: 0, z: 0}
   nearbyGuards: []
   avoidanceForce: 15
@@ -5044,7 +5044,7 @@ AudioSource:
   m_audioClip: {fileID: 8300000, guid: d51a474a213e36c3890fc8f3f2c37b0a, type: 3}
   m_Resource: {fileID: 8300000, guid: d51a474a213e36c3890fc8f3f2c37b0a, type: 3}
   m_PlayOnAwake: 0
-  m_Volume: 0.755
+  m_Volume: 0.85
   m_Pitch: 1
   Loop: 0
   Mute: 0
@@ -5052,8 +5052,8 @@ AudioSource:
   SpatializePostEffects: 0
   Priority: 128
   DopplerLevel: 1.1
-  MinDistance: 1
-  MaxDistance: 150
+  MinDistance: 50
+  MaxDistance: 200
   Pan2D: 0
   rolloffMode: 0
   BypassEffects: 0
