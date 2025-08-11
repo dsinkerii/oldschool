@@ -1,6 +1,8 @@
 # oldschool
 Portfolio Gamejam #32 source code. Public on game release!
 
+# https://dsinker11.itch.io/oldschool
+
 OLDSCHOOL - BE AGAINST AI
 
 
